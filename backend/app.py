@@ -4,7 +4,7 @@ from flask_cors import CORS
 from os import environ
 
 app = Flask(__name__)
-CORS(app) # This will enable CORS for all routes
+CORS(app,resources={r"/api/*": {"origins": ["http://localhost:3000"]}}) 
 # 調べる
 app.config['SQLALCHEMY_DATABASE_URI']= environ.get('DATABASE_URL')
 db = SQLAlchemy(app)
@@ -20,7 +20,6 @@ class User(db.Model):
         return {'id':self.id,'name':self.name,'email':self.email}
     
 
-    # なんだこれ
 db.create_all()
 
 
@@ -30,37 +29,44 @@ def test():
     return jsonify({'message': 'The server is running'})
 
 
-# create user
-@app.route('/api/flask/users',methods=['POST'])
-def create_user():
-    try:
-    # importしたrequestを使って、リクエストのjsonデータを取得
-      data = request.get_json()
-      new_user = User(name=data['name'],email=data['email'])
-    # sessionはORMの機能で、データベースのセッションを表す。gitのcommitと同じ
-      db.session.add(new_user)
-      db.session.commit()
+@app.after_request
+def add_cors_headers(response):
+    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'POST, GET, PUT, DELETE, OPTIONS')
+    return response
 
-      return jsonify({
-        'id' : new_user.id,
-        'name' : new_user.name,
-        'email': new_user.email
-      }), 201
 
-    except Exception as e:
-       return jsonify({'message': 'Unable to create user'}), 500
-  
-# get all users
-@app.route('/api/flask/users',methods=['GET'])
-def get_users():
-    try:
-        users = User.query.all()
-        # for文でusersの中身を取り出して、json()メソッドを使って、json形式に変換
-        users_data = [{'id':user.id,'name':user.name,'email':user.email} for user in users]
-        return jsonify(users_data), 200
-    except Exception as e:
-        return make_response({'message': 'Unable to get users'}, 500)   
-    
+# create user@app.route('/api/flask/users', methods=['POST', 'GET', 'OPTIONS'])
+def handle_users():
+    if request.method == 'OPTIONS':
+        # Handle preflight request
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, GET, PUT, DELETE')
+        return response
+
+    if request.method == 'POST':
+        # Create user
+        try:
+            data = request.get_json()
+            new_user = User(name=data['name'], email=data['email'])
+            db.session.add(new_user)
+            db.session.commit()
+            return jsonify({'id': new_user.id, 'name': new_user.name, 'email': new_user.email}), 201
+        except Exception as e:
+            return jsonify({'message': 'Unable to create user'}), 500
+
+    if request.method == 'GET':
+        # Get all users
+        try:
+            users = User.query.all()
+            users_data = [{'id': user.id, 'name': user.name, 'email': user.email} for user in users]
+            return jsonify(users_data), 200
+        except Exception as e:
+            return make_response({'message': 'Unable to get users'}, 500)
+        
 # get user by id
 @app.route('/api/flask/users/<id>',methods=['GET'])
 def get_user_by_id(id):
